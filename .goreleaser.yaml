@@ -1,0 +1,45 @@
+version: 2
+
+project_name: 0ximg
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: 0ximg
+    main: ./main.go
+    binary: 0ximg
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X 0ximg.sh/cli/cmd.Version={{.Version}}
+      - -X 0ximg.sh/cli/cmd.Commit={{.Commit}}
+      - -X 0ximg.sh/cli/cmd.Date={{.Date}}
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: git
+
+release:
+  github:
+    owner: 0ximg-sh
+    name: cli
