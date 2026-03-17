@@ -77,8 +77,8 @@ var rootCmd = &cobra.Command{
 			WindowTitle:      windowTitle,
 		}
 
-		if req.Language == "" && sourcePath != "" {
-			req.Language = strings.TrimPrefix(filepath.Ext(sourcePath), ".")
+		if req.Language == "" {
+			req.Language = detectLanguage(code, sourcePath)
 		}
 		if req.WindowTitle == "" && sourcePath != "" {
 			req.WindowTitle = filepath.Base(sourcePath)
@@ -220,6 +220,33 @@ func bindOptionalIntFlag(cmd *cobra.Command, target **int, flagName string, valu
 		valueCopy := value
 		*target = &valueCopy
 	}
+}
+
+func detectLanguage(code string, sourcePath string) string {
+	if sourcePath != "" {
+		return strings.TrimPrefix(filepath.Ext(sourcePath), ".")
+	}
+
+	trimmed := strings.TrimSpace(code)
+	if trimmed == "" {
+		return ""
+	}
+
+	firstLine := trimmed
+	if idx := strings.IndexByte(firstLine, '\n'); idx >= 0 {
+		firstLine = firstLine[:idx]
+	}
+
+	if strings.HasPrefix(firstLine, "#!") {
+		switch {
+		case strings.Contains(firstLine, "bash"):
+			return "bash"
+		case strings.Contains(firstLine, "sh"), strings.Contains(firstLine, "zsh"):
+			return "sh"
+		}
+	}
+
+	return "sh"
 }
 
 func validateHighlightLines(code string, raw string) error {
