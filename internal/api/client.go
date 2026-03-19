@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -26,6 +27,8 @@ func RenderImage(req models.RenderRequest) (string, string, error) {
 	if err != nil {
 		return "", "", fmt.Errorf("marshal render request: %w", err)
 	}
+
+	logDebugPayload(payload)
 
 	resp, err := http.Post(renderEndpoint, "application/json", bytes.NewReader(payload))
 	if err != nil {
@@ -62,6 +65,14 @@ func RenderImage(req models.RenderRequest) (string, string, error) {
 	}
 
 	return imageURL, previewURL, nil
+}
+
+func logDebugPayload(payload []byte) {
+	if strings.TrimSpace(os.Getenv("DEBUG")) == "" {
+		return
+	}
+
+	fmt.Fprintf(os.Stderr, "DEBUG render payload: %s\n", payload)
 }
 
 func PreviewURL(imageURL string) string {

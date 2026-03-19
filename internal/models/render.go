@@ -6,7 +6,7 @@ type RenderRequest struct {
 	Title            string `json:"title,omitempty"`
 	Theme            string `json:"theme,omitempty"`
 	Background       string `json:"background,omitempty"`
-	BackgroundImage  string `json:"backgroundImage,omitempty"`
+	// BackgroundImage  string `json:"backgroundImage,omitempty"`
 	CodePadRight     *int   `json:"codePadRight,omitempty"`
 	Font             string `json:"font,omitempty"`
 	HighlightLines   string `json:"highlightLines,omitempty"`

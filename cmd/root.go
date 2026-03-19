@@ -18,15 +18,20 @@ import (
 
 const buyMeACoffeeURL = "https://buymeacoffee.com/levinhne"
 
+const (
+	defaultPadHoriz = 24
+	defaultPadVert  = 20
+)
+
 var (
 	fromClipboard    bool
 	outputPath       string
-	shareOutput      bool
+	listThemes       bool
 	language         string
 	title            string
 	theme            string
 	background       string
-	backgroundImage  string
+	// backgroundImage  string
 	codePadRight     int
 	font             string
 	highlightLines   string
@@ -43,15 +48,50 @@ var (
 	shadowOffsetY    int
 	tabWidth         int
 	windowTitle      string
+	lineRange        string
 )
+
+var siliconThemes = []string{
+	"1337",
+	"Coldark-Cold",
+	"Coldark-Dark",
+	"DarkNeon",
+	"Dracula",
+	"GitHub",
+	"Monokai Extended",
+	"Monokai Extended Bright",
+	"Monokai Extended Light",
+	"Monokai Extended Origin",
+	"Nord",
+	"OneHalfDark",
+	"OneHalfLight",
+	"Solarized (dark)",
+	"Solarized (light)",
+	"Sublime Snazzy",
+	"TwoDark",
+	"Visual Studio Dark+",
+	"ansi",
+	"base16",
+	"base16-256",
+	"gruvbox-dark",
+	"gruvbox-light",
+	"zenburn",
+}
 
 var rootCmd = &cobra.Command{
 	Use:          "0ximg [file]",
 	Short:        "0ximg CLI",
 	Args:         cobra.MaximumNArgs(1),
 	SilenceUsage: true,
-	Example:      "  0ximg main.go --theme Dracula --output main.go.png\n  cat main.go | 0ximg --language go --theme Dracula --output main.go.png\n  0ximg --from-clipboard --language go --share",
+	Example:      "  0ximg main.go --theme Dracula --output main.go.png\n  cat main.go | 0ximg --language go --theme Dracula --output main.go.png\n  0ximg main.go --lines 10-20 --highlight-lines 12-14 --output snippet.png",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if listThemes {
+			for _, themeName := range siliconThemes {
+				fmt.Fprintln(cmd.OutOrStdout(), themeName)
+			}
+			return nil
+		}
+
 		if shouldShowHelp(args) {
 			return cmd.Help()
 		}
@@ -61,13 +101,25 @@ var rootCmd = &cobra.Command{
 			return err
 		}
 
+		if strings.TrimSpace(lineRange) != "" {
+			slicedCode, normalizedHighlights, lineRangeOffset, err := applyLineRange(code, lineRange, highlightLines, cmd.Flags().Changed("line-offset"))
+			if err != nil {
+				return err
+			}
+			code = slicedCode
+			highlightLines = normalizedHighlights
+			if !cmd.Flags().Changed("line-offset") {
+				lineOffset = lineRangeOffset
+			}
+		}
+
 		req := models.RenderRequest{
 			Code:             code,
 			Language:         language,
 			Title:            title,
 			Theme:            theme,
 			Background:       background,
-			BackgroundImage:  backgroundImage,
+			// BackgroundImage:  backgroundImage,
 			Font:             font,
 			HighlightLines:   highlightLines,
 			NoLineNumber:     noLineNumber,
@@ -91,29 +143,22 @@ var rootCmd = &cobra.Command{
 		}
 
 		bindOptionalIntFlag(cmd, &req.CodePadRight, "code-pad-right", codePadRight)
-		bindOptionalIntFlag(cmd, &req.LineOffset, "line-offset", lineOffset)
+		if strings.TrimSpace(lineRange) != "" {
+			setIntValue(&req.LineOffset, lineOffset)
+		} else {
+			bindOptionalIntFlag(cmd, &req.LineOffset, "line-offset", lineOffset)
+		}
 		bindOptionalIntFlag(cmd, &req.LinePad, "line-pad", linePad)
-		bindOptionalIntFlag(cmd, &req.PadHoriz, "pad-horiz", padHoriz)
-		bindOptionalIntFlag(cmd, &req.PadVert, "pad-vert", padVert)
+		setIntValue(&req.PadHoriz, padHoriz)
+		setIntValue(&req.PadVert, padVert)
 		bindOptionalIntFlag(cmd, &req.ShadowBlurRadius, "shadow-blur-radius", shadowBlurRadius)
 		bindOptionalIntFlag(cmd, &req.ShadowOffsetX, "shadow-offset-x", shadowOffsetX)
 		bindOptionalIntFlag(cmd, &req.ShadowOffsetY, "shadow-offset-y", shadowOffsetY)
 		bindOptionalIntFlag(cmd, &req.TabWidth, "tab-width", tabWidth)
 
-		imageURL, previewURL, err := api.RenderImage(req)
+		imageURL, _, err := api.RenderImage(req)
 		if err != nil {
 			return err
-		}
-
-		if shareOutput {
-			if err := clipboard.WriteAll(previewURL); err != nil {
-				return fmt.Errorf("copy preview link to clipboard: %w", err)
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "✨ Preview link copied to clipboard: %s\n", previewURL)
-			if previewURL != imageURL {
-				fmt.Fprintf(cmd.OutOrStdout(), "🖼 Image URL: %s\n", imageURL)
-			}
-			return nil
 		}
 
 		resolvedOutputPath := resolveOutputPath(sourcePath)
@@ -136,23 +181,24 @@ func init() {
 	rootCmd.AddCommand(versionCmd)
 
 	rootCmd.Flags().BoolVar(&fromClipboard, "from-clipboard", false, "Read code from clipboard")
+	rootCmd.Flags().BoolVar(&listThemes, "list-themes", false, "List available themes")
 	rootCmd.Flags().StringVarP(&outputPath, "output", "o", "", "Output image path")
-	rootCmd.Flags().BoolVarP(&shareOutput, "share", "s", false, "Copy the shareable link to clipboard")
 	rootCmd.Flags().StringVarP(&language, "language", "l", "", "Language for syntax highlighting")
 	rootCmd.Flags().StringVar(&title, "title", "", "Title metadata for the render")
 	rootCmd.Flags().StringVarP(&theme, "theme", "t", "", "Theme used by the renderer")
 	rootCmd.Flags().StringVarP(&background, "background", "b", "", "Background color")
-	rootCmd.Flags().StringVar(&backgroundImage, "background-image", "", "Background image path or URL")
+	// rootCmd.Flags().StringVar(&backgroundImage, "background-image", "", "Background image path or URL")
 	rootCmd.Flags().IntVar(&codePadRight, "code-pad-right", 0, "Right code padding")
 	rootCmd.Flags().StringVarP(&font, "font", "f", "", "Font family")
+	rootCmd.Flags().StringVar(&lineRange, "lines", "", "Only render a line range, e.g. 10-20")
 	rootCmd.Flags().StringVar(&highlightLines, "highlight-lines", "", "Line ranges to highlight, e.g. 1;5-12")
 	rootCmd.Flags().IntVar(&lineOffset, "line-offset", 0, "Starting line number")
 	rootCmd.Flags().IntVar(&linePad, "line-pad", 0, "Padding between lines")
 	rootCmd.Flags().BoolVar(&noLineNumber, "no-line-number", false, "Hide line numbers")
 	rootCmd.Flags().BoolVar(&noRoundCorner, "no-round-corner", false, "Disable rounded corners")
 	rootCmd.Flags().BoolVar(&noWindowControls, "no-window-controls", false, "Hide window controls")
-	rootCmd.Flags().IntVar(&padHoriz, "pad-horiz", 0, "Horizontal padding")
-	rootCmd.Flags().IntVar(&padVert, "pad-vert", 0, "Vertical padding")
+	rootCmd.Flags().IntVar(&padHoriz, "pad-horiz", defaultPadHoriz, "Horizontal padding")
+	rootCmd.Flags().IntVar(&padVert, "pad-vert", defaultPadVert, "Vertical padding")
 	rootCmd.Flags().IntVar(&shadowBlurRadius, "shadow-blur-radius", 0, "Shadow blur radius")
 	rootCmd.Flags().StringVar(&shadowColor, "shadow-color", "", "Shadow color")
 	rootCmd.Flags().IntVar(&shadowOffsetX, "shadow-offset-x", 0, "Shadow offset X")
@@ -217,9 +263,13 @@ func shouldShowHelp(args []string) bool {
 
 func bindOptionalIntFlag(cmd *cobra.Command, target **int, flagName string, value int) {
 	if cmd.Flags().Changed(flagName) {
-		valueCopy := value
-		*target = &valueCopy
+		setIntValue(target, value)
 	}
+}
+
+func setIntValue(target **int, value int) {
+	valueCopy := value
+	*target = &valueCopy
 }
 
 func detectLanguage(code string, sourcePath string) string {
@@ -326,6 +376,119 @@ func parsePositiveLineNumber(value string, segment string) (int, error) {
 	}
 
 	return line, nil
+}
+
+func applyLineRange(code string, rawRange string, rawHighlights string, lineOffsetChanged bool) (string, string, int, error) {
+	start, end, err := parseLineRange(rawRange)
+	if err != nil {
+		return "", "", 0, err
+	}
+
+	lines := splitCodeLines(code)
+	lineCount := len(lines)
+	if start > lineCount {
+		return "", "", 0, fmt.Errorf("invalid --lines %q: file only has %d lines", rawRange, lineCount)
+	}
+	if end > lineCount {
+		return "", "", 0, fmt.Errorf("invalid --lines %q: file only has %d lines", rawRange, lineCount)
+	}
+
+	sliced := strings.Join(lines[start-1:end], "\n")
+	if strings.HasSuffix(code, "\n") && end == lineCount {
+		sliced += "\n"
+	}
+
+	normalizedHighlights, err := normalizeHighlightLinesForRange(rawHighlights, start, end)
+	if err != nil {
+		return "", "", 0, err
+	}
+
+	offset := 0
+	if !lineOffsetChanged {
+		offset = start - 1
+	}
+
+	return sliced, normalizedHighlights, offset, nil
+}
+
+func parseLineRange(raw string) (int, int, error) {
+	rangeValue := strings.TrimSpace(raw)
+	if rangeValue == "" {
+		return 0, 0, fmt.Errorf("invalid --lines %q: expected start-end", raw)
+	}
+
+	normalized := strings.NewReplacer("..", "-", ":", "-").Replace(rangeValue)
+	parts := strings.Split(normalized, "-")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("invalid --lines %q: expected start-end", raw)
+	}
+
+	start, err := parsePositiveLineNumber(parts[0], normalized)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid --lines %q: %w", raw, err)
+	}
+	end, err := parsePositiveLineNumber(parts[1], normalized)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid --lines %q: %w", raw, err)
+	}
+	if start > end {
+		return 0, 0, fmt.Errorf("invalid --lines %q: start must be <= end", raw)
+	}
+
+	return start, end, nil
+}
+
+func normalizeHighlightLinesForRange(raw string, start int, end int) (string, error) {
+	normalized := normalizeHighlightLines(raw)
+	if normalized == "" {
+		return "", nil
+	}
+
+	segments := strings.Split(normalized, ";")
+	adjusted := make([]string, 0, len(segments))
+	for _, segment := range segments {
+		if strings.Contains(segment, "-") {
+			bounds := strings.Split(segment, "-")
+			if len(bounds) != 2 {
+				return "", fmt.Errorf("invalid --highlight-lines segment %q: expected start-end", segment)
+			}
+
+			segmentStart, err := parsePositiveLineNumber(bounds[0], segment)
+			if err != nil {
+				return "", err
+			}
+			segmentEnd, err := parsePositiveLineNumber(bounds[1], segment)
+			if err != nil {
+				return "", err
+			}
+			if segmentStart > segmentEnd {
+				return "", fmt.Errorf("invalid --highlight-lines segment %q: start must be <= end", segment)
+			}
+			if segmentStart < start || segmentEnd > end {
+				return "", fmt.Errorf("invalid --highlight-lines segment %q: outside selected --lines %d-%d", segment, start, end)
+			}
+
+			adjusted = append(adjusted, fmt.Sprintf("%d-%d", segmentStart-start+1, segmentEnd-start+1))
+			continue
+		}
+
+		line, err := parsePositiveLineNumber(segment, segment)
+		if err != nil {
+			return "", err
+		}
+		if line < start || line > end {
+			return "", fmt.Errorf("invalid --highlight-lines segment %q: outside selected --lines %d-%d", segment, start, end)
+		}
+
+		adjusted = append(adjusted, strconv.Itoa(line-start+1))
+	}
+
+	return strings.Join(adjusted, ";"), nil
+}
+
+func splitCodeLines(code string) []string {
+	trimmed := strings.TrimSuffix(code, "\n")
+	return strings.Split(trimmed, "\n")
 }
 
 func resolveOutputPath(sourcePath string) string {
