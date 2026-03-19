@@ -24,13 +24,13 @@ const (
 )
 
 var (
-	fromClipboard    bool
-	outputPath       string
-	listThemes       bool
-	language         string
-	title            string
-	theme            string
-	background       string
+	fromClipboard bool
+	outputPath    string
+	listThemes    bool
+	language      string
+	title         string
+	theme         string
+	background    string
 	// backgroundImage  string
 	codePadRight     int
 	font             string
@@ -50,6 +50,8 @@ var (
 	windowTitle      string
 	lineRange        string
 )
+
+var clipboardWriteAll = clipboard.WriteAll
 
 var siliconThemes = []string{
 	"1337",
@@ -114,11 +116,11 @@ var rootCmd = &cobra.Command{
 		}
 
 		req := models.RenderRequest{
-			Code:             code,
-			Language:         language,
-			Title:            title,
-			Theme:            theme,
-			Background:       background,
+			Code:       code,
+			Language:   language,
+			Title:      title,
+			Theme:      theme,
+			Background: background,
 			// BackgroundImage:  backgroundImage,
 			Font:             font,
 			HighlightLines:   highlightLines,
@@ -156,7 +158,7 @@ var rootCmd = &cobra.Command{
 		bindOptionalIntFlag(cmd, &req.ShadowOffsetY, "shadow-offset-y", shadowOffsetY)
 		bindOptionalIntFlag(cmd, &req.TabWidth, "tab-width", tabWidth)
 
-		imageURL, _, err := api.RenderImage(req)
+		imageURL, previewURL, err := api.RenderImage(req)
 		if err != nil {
 			return err
 		}
@@ -166,7 +168,7 @@ var rootCmd = &cobra.Command{
 			return err
 		}
 
-		fmt.Fprintln(cmd.OutOrStdout(), "🎨 Image saved successfully!")
+		reportRenderSuccess(cmd, resolvedOutputPath, previewURL, cmd.Flags().Changed("output"))
 		return nil
 	},
 }
@@ -538,4 +540,21 @@ func downloadImage(url string, destination string) error {
 	}
 
 	return nil
+}
+
+func reportRenderSuccess(cmd *cobra.Command, outputPath string, previewURL string, showSavedMessage bool) {
+	previewURL = strings.TrimSpace(previewURL)
+	if showSavedMessage {
+		fmt.Fprintf(cmd.OutOrStdout(), "🎨 Image saved: %s\n", outputPath)
+		return
+	}
+
+	if previewURL != "" {
+		fmt.Fprintf(cmd.OutOrStdout(), "🔗 Preview URL: %s\n", previewURL)
+		if err := clipboardWriteAll(previewURL); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: failed to copy preview URL to clipboard: %v\n", err)
+			return
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "📋 Preview URL copied to clipboard.")
+	}
 }

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
@@ -137,5 +138,87 @@ func TestLineOffsetIsIncludedWhenLinesSelected(t *testing.T) {
 
 	if req.LineOffset == nil || *req.LineOffset != 3 {
 		t.Fatalf("unexpected line offset: %#v", req.LineOffset)
+	}
+}
+
+func TestReportRenderSuccessShowsPreviewURLWithoutOutputFlag(t *testing.T) {
+	var copied string
+
+	oldClipboardWriteAll := clipboardWriteAll
+	clipboardWriteAll = func(value string) error {
+		copied = value
+		return nil
+	}
+	t.Cleanup(func() {
+		clipboardWriteAll = oldClipboardWriteAll
+	})
+
+	out := new(bytes.Buffer)
+	errOut := new(bytes.Buffer)
+	rootCmd.SetOut(out)
+	rootCmd.SetErr(errOut)
+
+	reportRenderSuccess(rootCmd, "./snippet.png", "https://0ximg.sh/renders/abc123", false)
+
+	output := out.String()
+	if !strings.Contains(output, "🔗 Preview URL: https://0ximg.sh/renders/abc123\n") {
+		t.Fatalf("expected preview URL in stdout, got %q", output)
+	}
+	if !strings.Contains(output, "📋 Preview URL copied to clipboard.\n") {
+		t.Fatalf("expected clipboard success message, got %q", output)
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errOut.String())
+	}
+	if copied != "https://0ximg.sh/renders/abc123" {
+		t.Fatalf("expected preview URL to be copied, got %q", copied)
+	}
+}
+
+func TestReportRenderSuccessWarnsWhenClipboardCopyFails(t *testing.T) {
+	oldClipboardWriteAll := clipboardWriteAll
+	clipboardWriteAll = func(string) error {
+		return errors.New("clipboard unavailable")
+	}
+	t.Cleanup(func() {
+		clipboardWriteAll = oldClipboardWriteAll
+	})
+
+	out := new(bytes.Buffer)
+	errOut := new(bytes.Buffer)
+	rootCmd.SetOut(out)
+	rootCmd.SetErr(errOut)
+
+	reportRenderSuccess(rootCmd, "./snippet.png", "https://0ximg.sh/renders/abc123", false)
+
+	if !strings.Contains(out.String(), "🔗 Preview URL: https://0ximg.sh/renders/abc123\n") {
+		t.Fatalf("expected preview URL in stdout, got %q", out.String())
+	}
+	if !strings.Contains(errOut.String(), "Warning: failed to copy preview URL to clipboard: clipboard unavailable\n") {
+		t.Fatalf("expected clipboard warning, got %q", errOut.String())
+	}
+}
+
+func TestReportRenderSuccessShowsSavedMessageOnlyWhenRequested(t *testing.T) {
+	oldClipboardWriteAll := clipboardWriteAll
+	clipboardWriteAll = func(string) error {
+		return nil
+	}
+	t.Cleanup(func() {
+		clipboardWriteAll = oldClipboardWriteAll
+	})
+
+	out := new(bytes.Buffer)
+	errOut := new(bytes.Buffer)
+	rootCmd.SetOut(out)
+	rootCmd.SetErr(errOut)
+
+	reportRenderSuccess(rootCmd, "./snippet.png", "https://0ximg.sh/renders/abc123", true)
+
+	if out.String() != "🎨 Image saved: ./snippet.png\n" {
+		t.Fatalf("expected saved message only, got %q", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errOut.String())
 	}
 }
